@@ -7,12 +7,14 @@ Created on Wed Nov 11 05:22:13 2020
 
 import threading
 import time
-import etroapp
+import etrogui
 import ControlerXbox
-import sys
+import serialcncinterface
+
+GUI = etrogui.GUI()
 
 def ControlEvent(State,LastState):
-    CliState=etroapp.ClientState[1]
+    CliState=etrogui.ClientState[1]
     if LastState[1][4]-State[1][4] == 1: #(LB) was Released
         CliState -= 1
         print('(LB) was Released')
@@ -23,10 +25,10 @@ def ControlEvent(State,LastState):
     elif CliState>5 : CliState=5    
     return CliState 
 
-    
+
 def Thread1Script():
     time.sleep(0.5)
-    Etroapp = etroapp.etroapp()
+    GUI.run()
     return True
 
 def Thread2Script():
@@ -38,17 +40,28 @@ def Thread2Script():
         ContrlastState = ContrState #reminding last state to perceive event
         ContrState = ControlerXbox.JoyHandler.UpdateControl()
         ClientNewState = ControlEvent(ContrState,ContrlastState)
-        etroapp.ClientState[1] = ClientNewState
+        GUI.ClientState[1] = ClientNewState
         time.sleep(50/1000)
         
     return True
 
+def Thread3Script():
+    time.sleep(1)
+    BroadcastControllState = 1
+    CncInterface = serialcncinterface.SerialCNCInterface()
+    CncInterface.run()
+    while BroadcastControllState == 1:
+        status = CncInterface.CNCStatus()
+        etrogui.ClientState = [status[0],time.ctime()]
+        print(etrogui.ClientState)
+        time.sleep(0.5)
+    return True
 
-Thread1 = threading.Thread(name='etroapp server', target=Thread1Script)
-Thread2 = threading.Thread(name='robot interface', target=Thread2Script)
+Thread1 = threading.Thread(name='EtrOGUI server', target=Thread1Script)
+Thread2 = threading.Thread(name='robot controll interface', target=Thread2Script)
+Thread3 = threading.Thread(name='CNC Machine Interface', target=Thread3Script)
 
 Thread1.start()
-Thread2.start()
-
-
+#Thread2.start()
+Thread3.start()
 

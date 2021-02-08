@@ -13,7 +13,8 @@ class JoyHandler():
     pygame.joystick.init()
     
     def initcontrol(joy=0):
-        global init
+        global init 
+        init = False
         if pygame.joystick.Joystick(joy).get_init == False:
             pygame.joystick.Joystick(joy).init()
             # Prints the joystick's name
