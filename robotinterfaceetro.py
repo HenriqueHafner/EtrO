@@ -7,11 +7,13 @@ Created on Wed Nov 11 05:22:13 2020
 
 import threading
 import time
+
 import etrogui
 import ControlerXbox
 import serialcncinterface
 
 GUI = etrogui.GUI()
+CncInterface = serialcncinterface.SerialCNCInterface()
 
 def ControlEvent(State,LastState):
     CliState=etrogui.ClientState[1]
@@ -27,11 +29,25 @@ def ControlEvent(State,LastState):
 
 
 def Thread1Script():
-    time.sleep(0.5)
-    GUI.run()
+    time.sleep(1)
+    GUI.run_webserver()
     return True
 
 def Thread2Script():
+    time.sleep(1)
+    update_displays = True
+    while(True):
+        if update_displays == True:
+            GUI.gcode_displaydata_fill(CncInterface)
+            time.sleep(0.1)    
+    return True   
+
+def Thread3Script():
+    time.sleep(0.1)
+    CncInterface.run()
+    return True
+
+def Thread4Script():
     time.sleep(1)
     ControlerXbox.JoyHandler.initcontrol()
     BordcastControllState = 1
@@ -42,26 +58,19 @@ def Thread2Script():
         ClientNewState = ControlEvent(ContrState,ContrlastState)
         GUI.ClientState[1] = ClientNewState
         time.sleep(50/1000)
-        
     return True
 
-def Thread3Script():
-    time.sleep(1)
-    BroadcastControllState = 1
-    CncInterface = serialcncinterface.SerialCNCInterface()
-    CncInterface.run()
-    while BroadcastControllState == 1:
-        status = CncInterface.CNCStatus()
-        etrogui.ClientState = [status[0],time.ctime()]
-        print(etrogui.ClientState)
-        time.sleep(0.5)
-    return True
+@etrogui.eel.expose
+def UpdateClient():
+    return GUI.gcode_display
+
 
 Thread1 = threading.Thread(name='EtrOGUI server', target=Thread1Script)
-Thread2 = threading.Thread(name='robot controll interface', target=Thread2Script)
+Thread2 = threading.Thread(name='EtrOGUI handler', target=Thread2Script)
 Thread3 = threading.Thread(name='CNC Machine Interface', target=Thread3Script)
+Thread4 = threading.Thread(name='robot controll interface', target=Thread4Script)
 
 Thread1.start()
-#Thread2.start()
+Thread2.start()
 Thread3.start()
-
+#Thread4.start()
