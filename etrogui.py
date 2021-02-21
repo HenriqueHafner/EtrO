@@ -35,7 +35,7 @@ class GUI():
         for i in range(gdws):
             element_index = gdwi[i]+display_gcode_shift[i]
             if element_index >= 0:
-                self.gcode_display[i] = CncInterface.gcode_file[0][element_index]
+                self.gcode_display[i] = str(element_index)+' : '+CncInterface.gcode_file[0][element_index]
             else:
                 self.gcode_display[i] = ' '
         return True

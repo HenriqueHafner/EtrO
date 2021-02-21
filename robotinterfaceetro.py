@@ -9,7 +9,7 @@ import threading
 import time
 
 import etrogui
-import ControlerXbox
+
 import serialcncinterface
 
 GUI = etrogui.GUI()
@@ -30,7 +30,7 @@ def ControlEvent(State,LastState):
 
 def Thread1Script():
     time.sleep(1)
-    GUI.run_webserver()
+    #GUI.run_webserver()
     return True
 
 def Thread2Script():
@@ -48,7 +48,8 @@ def Thread3Script():
     return True
 
 def Thread4Script():
-    time.sleep(1)
+    time.sleep(2)
+    import ControlerXbox
     ControlerXbox.JoyHandler.initcontrol()
     BordcastControllState = 1
     ContrState = ControlerXbox.JoyHandler.UpdateControl() #first requisition

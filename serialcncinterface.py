@@ -7,23 +7,31 @@ Created on Tue Oct 22 18:22:17 2019
 import time
 import serial
 import serial.tools.list_ports as lp #return a object list with serial ports information
+import glob
 import os
 
 class SerialCNCInterface():
 
     def __init__(self):
-        self.gcode_status = 0
-        self.gcode_file = [[0],0,'Null',0] # [Gcode File, file line pos,file name,file lines size]
+
+        #serial communication attributes
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
         self.SerialPorts = lp.comports()
         self.ControllerCOM = object #this object will be further overwrited by the serial comunmicator instance
-
         for i in self.SerialPorts:
             if i.hwid == self.Controller_hwid:
                 self.ControllerPortName = i.name
                 print('Found Serial port for Controler with ',self.Controller_hwid,' hwid')
             else:
                 self.ControllerPortName = False
+
+        #comand file attributes
+        self.gcode_status = 0
+        self.gcode_file = [[0],0,'Null',0] # [Gcode File, file line pos,file name,file lines size]
+        self.gcode_files_dir
+        self.gcode_file_adress = os.path.join(os.getcwd(),'test.gcode')
+        self.gcode_files_list = [self.gcode_file_adress]
+
             
     def bind_communication(self,ControllerPortName):
         if ControllerPortName != False:
@@ -58,8 +66,8 @@ class SerialCNCInterface():
         self.ControllerCOM.close()
         return True
 
-    def get_gcode_data(self,file_adress):
-        with open(file_adress) as f:
+    def get_gcode_data(self,fileadress):
+        with open(fileadress) as f:
             gcode_data = f.read()
         gcode_data = gcode_data.split('\n')
         return gcode_data
@@ -85,8 +93,23 @@ class SerialCNCInterface():
             target_line = max(0,target_line)
         self.gcode_file[1] = target_line
         return True
-                
-    def gcode_handler(self):
+        
+    def gcode_file_handler(self,arg_def='test'):#fazer o ponteiro andar sobre os códigos
+        if arg_def == 'test':
+            self.gcode_files_dir = os.getcwd()
+            filename='test.gcode'
+        elif arg_def == 'GetNext' or arg_def == 'GetPrev':
+            self.gcode_files_list = glob.glob(os.path.join(self.gcode_files_dir,'*.gcode'))
+            self.gcode_files_list.sort(key=os.path.getctime,reverse=True)
+        elif type(arg_def) == list:
+            self.gcode_files_dir = arg_def[0]           
+            filename = arg_def[1]
+        else:
+            return False
+        self.gcode_file_adress = os.path.join(self.gcode_files_dir,filename)
+        return True
+
+    def gcode_stream_handler(self):
         if self.gcode_status == 0:
             return 'gcode_handler Idle'
         elif self.gcode_status == 1:
@@ -94,7 +117,7 @@ class SerialCNCInterface():
     
     def run(self):
         self.bind_communication(ControllerPortName=self.ControllerPortName)
-        self.gcode_file[0] = self.get_gcode_data(file_adress=os.path.join(os.getcwd(),'test.gcode'))
+        self.gcode_file[0] = self.get_gcode_data(self.gcode_file_adress)
 
 
     
