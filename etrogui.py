@@ -22,7 +22,8 @@ class GUI():
     def run_webserver(self):
         eel.init('web')
         print('EtrO App webserver starting..')
-        eel.start('cncmachinedashboard.html',mode=False)
+        eel.start('cncmachinedashboard.html',port=80)
+        print('EtrO App webserver Closed..')
         return None
     
     #adicionar numero linha no plot, remover .gcode_file da funcao, ssubstituir pelo valor como argumento

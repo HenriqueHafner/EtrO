@@ -30,7 +30,7 @@ def ControlEvent(State,LastState):
 
 def Thread1Script():
     time.sleep(1)
-    #GUI.run_webserver()
+    GUI.run_webserver()
     return True
 
 def Thread2Script():

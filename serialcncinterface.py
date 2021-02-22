@@ -25,10 +25,10 @@ class SerialCNCInterface():
             else:
                 self.ControllerPortName = False
 
-        #comand file attributes
+        #comand_file attributes
         self.gcode_status = 0
         self.gcode_file = [[0],0,'Null',0] # [Gcode File, file line pos,file name,file lines size]
-        self.gcode_files_dir
+        self.gcode_files_dir = ['']
         self.gcode_file_adress = os.path.join(os.getcwd(),'test.gcode')
         self.gcode_files_list = [self.gcode_file_adress]
 
@@ -66,7 +66,7 @@ class SerialCNCInterface():
         self.ControllerCOM.close()
         return True
 
-    def get_gcode_data(self,fileadress):
+    def get_gcode_data(self,fileadress):       
         with open(fileadress) as f:
             gcode_data = f.read()
         gcode_data = gcode_data.split('\n')
@@ -116,7 +116,7 @@ class SerialCNCInterface():
             return self.stream_gcode()
     
     def run(self):
-        self.bind_communication(ControllerPortName=self.ControllerPortName)
+        #self.bind_communication(ControllerPortName=self.ControllerPortName)
         self.gcode_file[0] = self.get_gcode_data(self.gcode_file_adress)
 
 
