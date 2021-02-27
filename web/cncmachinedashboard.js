@@ -32,8 +32,6 @@ async function UpdateClient() {
 	for (var i in value) {
 		ctx.fillText(value[i],10,linecount*20);
 		linecount ++
-		
-
     ctx.stroke();
 	}
 }

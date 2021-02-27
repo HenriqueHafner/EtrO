@@ -17,7 +17,7 @@ class SerialCNCInterface():
         #serial communication attributes
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
         self.SerialPorts = lp.comports()
-        self.ControllerCOM = object #this object will be further overwrited by the serial comunmicator instance
+        self.ControllerCOM = False #this object will be further overwrited by the serial comunmicator instance
         for i in self.SerialPorts:
             if i.hwid == self.Controller_hwid:
                 self.ControllerPortName = i.name
@@ -27,7 +27,8 @@ class SerialCNCInterface():
 
         #comand_file attributes
         self.gcode_status = 0
-        self.gcode_file = [[0],0,'Null',0] # [Gcode File, file line pos,file name,file lines size]
+        self.gcode_custom_message = ['Null']
+        self.gcode_file = [[0],5,'Null',0] # [Gcode File, file line pos,file name,file lines size]
         self.gcode_files_dir = ['']
         self.gcode_file_adress = os.path.join(os.getcwd(),'test.gcode')
         self.gcode_files_list = [self.gcode_file_adress]
@@ -41,23 +42,48 @@ class SerialCNCInterface():
         else:
             return False
 
-    def readCNCserial(self,char_limit=1024,stability_sleep=True,decodemode='utf-8'):
+    def read_cnc_serial(self,stability_sleep=True,char_limit=1024,decodemode='utf-8',feedback=False,feedback_timeout=20):
+        # feedback waiting block
+        if feedback != False:
+            rear = True
+            stime = time.time()
+            while rear == True:
+                message = self.ControllerCOM.read(char_limit)
+                if message == feedback:
+                    rear = False
+                    return True
+                elif len(message) > 0:
+                    rear = False
+                    return 'recieved feedback message is unexpected.'
+                elif time.time()-stime > feedback_timeout:
+                    rear = False
+                    return 'Timeout, '+str(feedback_timeout)+' seconds with no respose.'
+                time.sleep(0.02)
+        
+        #Simple read block
         if stability_sleep==True:
-            time.sleep(0.2)
+            time.sleep(0.1)
         message = self.ControllerCOM.read(char_limit)
         message = message.decode(decodemode)
         return message
     
     def write_cnc_serial(self,data):
-        self.ControllerCOM.write(data)
-        return
+        if self.ControllerCOM != False:
+            self.ControllerCOM.write(data)
+            feedback_answer = self.read_cnc_serial(feedback='ok!'.encode('utf-8'))
+            if feedback_answer != True:
+                print(feedback_answer)
+            return True
+        else:
+            print('Missing serial Device. ',data)
+            return False
 
     def CNCStatus(self):
         status = 'Null'
         try:
             self.ControllerCOM.flush()
             self.ControllerCOM.write(bytes("M105\n","utf-8"))
-            status=self.readCNCserial()
+            status=self.read_cnc_serial()
         except:
             status = 'Failed to comunicate.'
         return status
@@ -77,9 +103,10 @@ class SerialCNCInterface():
         gc_linebwrite = self.gcode_file[0][gc_line_pos]
         self.gcode_file[1] +=1
         if gc_linebwrite[0] == ';':
-            return None
+            return 'Not valid command line'
         gc_linebwrite = gc_linebwrite.encode('utf-8')
-        return gc_linebwrite 
+        self.write_cnc_serial(gc_linebwrite)
+        return True 
     
     def gcode_move_lastlinepos(self,line,operator='abs'):
         curr_line = self.gcode_file[1]
@@ -110,10 +137,17 @@ class SerialCNCInterface():
         return True
 
     def gcode_stream_handler(self):
+        if self.gcode_custom_message != ['Null']:
+            for custom_message in self.gcode_custom_message:
+                b_custom_message = custom_message.encode('utf-8')
+                self.write_cnc_serial(b_custom_message)
+            self.gcode_custom_message = ['Null']
         if self.gcode_status == 0:
             return 'gcode_handler Idle'
         elif self.gcode_status == 1:
             return self.stream_gcode()
+
+        
     
     def run(self):
         #self.bind_communication(ControllerPortName=self.ControllerPortName)

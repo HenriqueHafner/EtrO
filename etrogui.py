@@ -26,7 +26,6 @@ class GUI():
         print('EtrO App webserver Closed..')
         return None
     
-    #adicionar numero linha no plot, remover .gcode_file da funcao, ssubstituir pelo valor como argumento
     def gcode_displaydata_fill(self,CncInterface,gdws=11): #gdws is gcode_display_window_size , need to be odd number
         self.gcode_display = ['-']*gdws 
         gdwi = [CncInterface.gcode_file[1]]*gdws #gcode_display_window_index
