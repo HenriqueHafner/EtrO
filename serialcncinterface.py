@@ -13,28 +13,35 @@ import os
 class SerialCNCInterface():
 
     def __init__(self):
-
         #serial communication attributes
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
+        self.ControllerCOM = False #var will be further overwrited with serial comunmicator instance
+        self.ControllerPortName = str #var with the part name 
+        self.find_serial_device()
+        
+        #comand_file attributes
+        self.gcode_status = 0
+        self.gcode_custom_message = ['Null']
+        self.gcode_file = [['0'],5,'Null',0] # [Gcode File, file line pos,file name,file lines size]
+        self.gcode_files_dir = ['']
+        self.gcode_file_adress = os.path.join(os.getcwd(),'test.gcode')
+        self.gcode_files_list = [self.gcode_file_adress]
+        self.gcode_custom_message = ['G28 X Y','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5']
+ 
+
+    def find_serial_device(self):
         self.SerialPorts = lp.comports()
-        self.ControllerCOM = False #this object will be further overwrited by the serial comunmicator instance
         for i in self.SerialPorts:
             if i.hwid == self.Controller_hwid:
                 self.ControllerPortName = i.name
                 print('Found Serial port for Controler with ',self.Controller_hwid,' hwid')
+                return True
             else:
                 self.ControllerPortName = False
-
-        #comand_file attributes
-        self.gcode_status = 0
-        self.gcode_custom_message = ['Null']
-        self.gcode_file = [[0],5,'Null',0] # [Gcode File, file line pos,file name,file lines size]
-        self.gcode_files_dir = ['']
-        self.gcode_file_adress = os.path.join(os.getcwd(),'test.gcode')
-        self.gcode_files_list = [self.gcode_file_adress]
-
-            
-    def bind_communication(self,ControllerPortName):
+        return False
+        
+    def bind_communication(self):
+        ControllerPortName = self.ControllerPortName
         if ControllerPortName != False:
             self.ControllerCOM = serial.Serial(port=ControllerPortName,baudrate=250000,timeout=1)
             print('Port: ',ControllerPortName, 'connected.')
@@ -42,19 +49,26 @@ class SerialCNCInterface():
         else:
             return False
 
-    def read_cnc_serial(self,stability_sleep=True,char_limit=1024,decodemode='utf-8',feedback=False,feedback_timeout=20):
+    def read_cnc_serial(self,stability_sleep=True,char_limit=1024,feedback=False,feedback_timeout=20,debug=True):
+        #check if binded
+        if self.ControllerCOM == False:                
+            print('No serial device binded.')
+            return False
+        
         # feedback waiting block
-        if feedback != False:
+        if feedback != False:  
             rear = True
             stime = time.time()
             while rear == True:
                 message = self.ControllerCOM.read(char_limit)
+                if debug == True: print(message)
                 if message == feedback:
                     rear = False
                     return True
                 elif len(message) > 0:
+                    print(message)
                     rear = False
-                    return 'recieved feedback message is unexpected.'
+                    return 'recieved feedback message is not the expected flag.'
                 elif time.time()-stime > feedback_timeout:
                     rear = False
                     return 'Timeout, '+str(feedback_timeout)+' seconds with no respose.'
@@ -64,13 +78,16 @@ class SerialCNCInterface():
         if stability_sleep==True:
             time.sleep(0.1)
         message = self.ControllerCOM.read(char_limit)
-        message = message.decode(decodemode)
+        message = message.decode('utf-8')
         return message
     
     def write_cnc_serial(self,data):
+        if data[-1] != '\n':
+            data = data+'\n'
+        data = bytes(data,'utf-8')
         if self.ControllerCOM != False:
             self.ControllerCOM.write(data)
-            feedback_answer = self.read_cnc_serial(feedback='ok!'.encode('utf-8'))
+            feedback_answer = self.read_cnc_serial(feedback=bytes('ok\n','utf-8'),char_limit=3)
             if feedback_answer != True:
                 print(feedback_answer)
             return True
@@ -104,7 +121,6 @@ class SerialCNCInterface():
         self.gcode_file[1] +=1
         if gc_linebwrite[0] == ';':
             return 'Not valid command line'
-        gc_linebwrite = gc_linebwrite.encode('utf-8')
         self.write_cnc_serial(gc_linebwrite)
         return True 
     
@@ -136,12 +152,12 @@ class SerialCNCInterface():
         self.gcode_file_adress = os.path.join(self.gcode_files_dir,filename)
         return True
 
-    def gcode_stream_handler(self):
+    def gcode_stream_handler(self): #flush not working!!!
         if self.gcode_custom_message != ['Null']:
+            self.ControllerCOM.flush()
             for custom_message in self.gcode_custom_message:
-                b_custom_message = custom_message.encode('utf-8')
-                self.write_cnc_serial(b_custom_message)
-            self.gcode_custom_message = ['Null']
+                self.write_cnc_serial(custom_message)
+            #self.gcode_custom_message = ['Null']
         if self.gcode_status == 0:
             return 'gcode_handler Idle'
         elif self.gcode_status == 1:
@@ -150,7 +166,7 @@ class SerialCNCInterface():
         
     
     def run(self):
-        #self.bind_communication(ControllerPortName=self.ControllerPortName)
+        self.bind_communication()
         self.gcode_file[0] = self.get_gcode_data(self.gcode_file_adress)
 
 
