@@ -9,13 +9,12 @@ import threading
 import time
 
 import etrogui
-
 import serialcncinterface
 
-GUI = etrogui.GUI()
-CncInterface = serialcncinterface.SerialCNCInterface()
+GUI = etrogui.gui()
+CNC_INTERFACE = serialcncinterface.serial_cnc_interface()
 
-def ControlEvent(State,LastState):
+def control_event(State,LastState):
     CliState=etrogui.ClientState[1]
     if LastState[1][4]-State[1][4] == 1: #(LB) was Released
         CliState -= 1
@@ -24,30 +23,30 @@ def ControlEvent(State,LastState):
         CliState += 1
         print('(RB) was Released')
     if CliState<1 : CliState=1
-    elif CliState>5 : CliState=5    
+    elif CliState>5 : CliState=5
     return CliState 
 
 
-def Thread1Script():
+def THREAD_1_script():
     time.sleep(1)
     GUI.run_webserver()
     return True
 
-def Thread2Script():
+def THREAD_2_script():
     time.sleep(1)
     update_displays = True
     while(True):
         if update_displays == True:
-            GUI.gcode_displaydata_fill(CncInterface)
-            time.sleep(0.1)    
-    return True   
+            GUI.gcode_displaydata_fill(CNC_INTERFACE)
+            time.sleep(0.1)
+    return True 
 
-def Thread3Script():
+def THREAD_3_script():
     time.sleep(0.1)
-    CncInterface.run()
+    CNC_INTERFACE.run()
     return True
 
-def Thread4Script():
+def THREAD_4_script():
     time.sleep(2)
     import ControlerXbox
     ControlerXbox.JoyHandler.initcontrol()
@@ -57,21 +56,21 @@ def Thread4Script():
         ContrlastState = ContrState #reminding last state to perceive event
         ContrState = ControlerXbox.JoyHandler.UpdateControl()
         ClientNewState = ControlEvent(ContrState,ContrlastState)
-        GUI.ClientState[1] = ClientNewState
+        gui.ClientState[1] = ClientNewState
         time.sleep(50/1000)
     return True
 
 @etrogui.eel.expose
-def UpdateClient():
+def update_client():
     return GUI.gcode_display
 
 
-Thread1 = threading.Thread(name='EtrOGUI server', target=Thread1Script)
-Thread2 = threading.Thread(name='EtrOGUI handler', target=Thread2Script)
-Thread3 = threading.Thread(name='CNC Machine Interface', target=Thread3Script)
-Thread4 = threading.Thread(name='robot controll interface', target=Thread4Script)
+THREAD_1 = threading.Thread(name='EtrOGUI server', target=THREAD_1_script)
+THREAD_2 = threading.Thread(name='EtrOGUI handler', target=THREAD_2_script)
+THREAD_3 = threading.Thread(name='CNC Machine Interface', target=THREAD_3_script)
+THREAD_4 = threading.Thread(name='robot controll interface', target=THREAD_4_script)
 
-Thread1.start()
-Thread2.start()
-Thread3.start()
-#Thread4.start()
+THREAD_1.start()
+THREAD_2.start()
+THREAD_3.start()
+#THREAD_4.start()

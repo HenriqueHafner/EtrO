@@ -10,14 +10,15 @@ import serial.tools.list_ports as lp #return a object list with serial ports inf
 import glob
 import os
 
-class SerialCNCInterface():
+class serial_cnc_interface():
 
     def __init__(self):
         #serial communication attributes
+        self.setup_done = False
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
         self.ControllerCOM = False #var will be further overwrited with serial comunmicator instance
         self.ControllerPortName = str #var with the part name 
-        self.find_serial_device()
+        
         
         #comand_file attributes
         self.gcode_status = 0
@@ -27,8 +28,7 @@ class SerialCNCInterface():
         self.gcode_data_name = 'Null'
         self.gcode_data_adress = 'Null'
         self.gcode_datas_list = ['Null']
-        self.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
- 
+        self.gcode_custom_message = []
 
     def find_serial_device(self):
         self.SerialPorts = lp.comports()
@@ -37,13 +37,12 @@ class SerialCNCInterface():
                 self.ControllerPortName = i.name
                 print('Found Serial port for Controler with ',self.Controller_hwid,' hwid')
                 return True
-            else:
-                self.ControllerPortName = False
+        self.ControllerPortName = 'Null'
         return False
         
     def bind_communication(self):
         ControllerPortName = self.ControllerPortName
-        if ControllerPortName != False:
+        if ControllerPortName != 'Null':
             self.ControllerCOM = serial.Serial(port=ControllerPortName,baudrate=250000,timeout=1)
             print('Port: ',ControllerPortName, 'connected.')
             return True
@@ -190,15 +189,18 @@ class SerialCNCInterface():
         return
 
     def run(self):
+        self.find_serial_device()
         self.bind_communication()
         self.gcode_data_handler('GetNewest')
         self.gcode_set_data()
+        self.setup_done = True
 
 
 #quando recarregado, file_handler nao atualiza as propriedades gcode_data
-test = True
+test = False
 if test == True:
-   tester = SerialCNCInterface()
+   tester = serial_cnc_interface()
+   tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
    tester.run()
    #tester.write_cnc_serial('G28 X Y')
    #tester.gcode_stream_handler()

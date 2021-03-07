@@ -21,8 +21,8 @@ ctx.lineWidth = "2";
 ctx.strokeStyle = "white";
 ctx.rect(2, 105, 496, 18);
 
-async function UpdateClient() {
-    let value = await eel.UpdateClient()();
+async function update_client() {
+    let value = await eel.update_client()();
 	ctx.fillStyle = '#808080'; //define estilo do que vai ser desenhado
 	ctx.fillRect(0, 0, canvas.width, canvas.height); //Limpar area a ser desenhada
 	ctx.fillStyle = '#ffffff'; //cor do texto
@@ -35,7 +35,7 @@ async function UpdateClient() {
     ctx.stroke();
 	}
 }
-var UpdateClientRoutine = setInterval(UpdateClient, 5);
+var UpdateClientRoutine = setInterval(update_client, 5);
 //clearInterval(UpdateClientRoutine)
 
 
