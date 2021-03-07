@@ -49,11 +49,24 @@ class serial_cnc_interface():
         else:
             return False
 
-    def read_cnc_serial(self,stability_sleep=True,char_limit=1024,feedback=False,feedback_timeout=20,debug=True):
+    def read_cnc_serial(self,char_limit=1024,feedback=False,
+                        feedback_timeout=20,debug=True,flush=False):
         #check if binded
         if self.ControllerCOM == False:                
             print('No serial device binded.')
             return False
+        
+        #flush block
+        if flush == True:
+            dump = self.ControllerCOM.read(1024)
+            if len(dump) > 1023:
+                print(dump)
+                print('#'*80)
+                print('dump size insufficient, call flush again.')
+                print('#'*80)
+                return False
+            else:
+                return True
         
         # feedback waiting block
         if feedback != False:  
@@ -64,41 +77,59 @@ class serial_cnc_interface():
                 if debug == True: print(message)
                 if message == feedback:
                     rear = False
-                    return 'FB1'
+                    return True
                 elif len(message) > 0:
+                    message = message+self.ControllerCOM.read(1024)
                     print(message)
+                    print('recieved feedback message is not the expected flag.')
                     rear = False
-                    return 'recieved feedback message is not the expected flag.'
+                    return False
                 elif time.time()-stime > feedback_timeout:
                     rear = False
                     return 'Timeout, '+str(feedback_timeout)+' seconds with no respose.'
                 time.sleep(0.02)
         
         #Simple read block
-        if stability_sleep==True:
-            time.sleep(0.1)
         message = self.ControllerCOM.read(char_limit)
         message = message.decode('utf-8')
         return message
     
-    def write_cnc_serial(self,data,assure_ln=True):
-        if self.ControllerCOM == False:
+    def write_cnc_serial(self,data,data_conditioner=True,feedback_check=True):
+        if self.ControllerCOM == False: #serial availability checkpoint
             print('Missing serial Device. ',data)
-            return False            
-        if assure_ln == True:          
-            if data[-1] != '\n':
-                data = data+'\n'
-        data = bytes(data,'utf-8')
-        self.ControllerCOM.write(data)
-        feedback_answer = self.read_cnc_serial(feedback=bytes('ok\n','utf-8'),char_limit=3)
-        if feedback_answer == 'FB1':
-            return 'FB1'
-        elif feedback_answer == True:
-            return True
+            return False          
+        if data_conditioner == True: #condictioning data
+            data = self.gcode_message_conditioner(data)
+        
+        self.ControllerCOM.write(data) #write data
+        
+        #feedback listener
+        if feedback_check == True:
+            feedback_message = bytes('ok\n','utf-8')
+            sucess_flag = self.read_cnc_serial(feedback=feedback_message,
+                                             char_limit=len(feedback_message))
+            if sucess_flag == True:
+                return True
+            else:
+                return False
         else:
-            print(feedback_answer)
-            return False
+            return True
 
+
+    def gcode_message_conditioner(message):
+        acceptable_command = ['G','M'] #Check if message is a valid command
+        is_valid_command = False
+        for i in acceptable_comand:
+            if message[0] == i:
+                is_valid_command = True
+            pass
+        if is_valid_command == False:
+            return False      
+        if message[-1] != '\n': #Force a line break at end
+            message = data+'\n'
+        message = bytes(data,'utf-8') #encode to bytes
+        return message
+    
     def CNCStatus(self):
         status = 'Null'
         try:
