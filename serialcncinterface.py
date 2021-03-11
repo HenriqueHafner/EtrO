@@ -116,7 +116,7 @@ class serial_cnc_interface():
             if len(data_str) >= 80:
                 data_str = data_str[0:75]
                 data_str +=('[...]')
-            self.console_stdout_buffer.append(data)
+            self.console_stdout_buffer.append(data_str)
             return True
         else:
             print('unexpected data type',type(data))
