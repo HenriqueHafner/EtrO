@@ -18,6 +18,7 @@ class serial_cnc_interface():
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
         self.ControllerCOM = False #var will be further overwrited with serial comunmicator instance
         self.ControllerPortName = str #var with the part name 
+        self.console_stdout_buffer = []
         
         
         #comand_file attributes
@@ -49,6 +50,20 @@ class serial_cnc_interface():
         else:
             return False
 
+    def cnc_interface_read_parser(self,size=1024):
+        if type(size) == int:
+            data = self.ControllerCOM.read(size)
+            if type(data) == bytes:
+                data_str = data.decode('utf-8')
+                if len(data_str) >= 80:
+                    data_str = data_str[0:75]
+                    data_str +=('[...]')
+            self.console_stdout_buffer.append(data_str)
+            return data
+        else:
+            print('unexpected size type',type(data),'must be int')
+            return False
+
     def read_cnc_serial(self,char_limit=1024,feedback=False,
                         feedback_timeout=20,debug=True,flush=False):
         #check if binded
@@ -58,8 +73,8 @@ class serial_cnc_interface():
         
         #flush block
         if flush == True:
-            dump = self.ControllerCOM.read(1024)
-            if len(dump) > 1023:
+            dump = self.cnc_interface_read_parser(856)
+            if len(dump) >= 856:
                 print(dump)
                 print('#'*80)
                 print('dump size insufficient, call flush again.')
@@ -67,19 +82,19 @@ class serial_cnc_interface():
                 return False
             else:
                 return True
-        
+
         # feedback waiting block
         if feedback != False:  
             rear = True
             stime = time.time()
             while rear == True:
-                message = self.ControllerCOM.read(len(feedback))
+                message = self.cnc_interface_read_parser(len(feedback))
                 if debug == True: print(message)
                 if message == feedback:
                     rear = False
                     return True
                 elif len(message) > 0:
-                    message = message+self.ControllerCOM.read(1024)
+                    message = message+self.cnc_interface_read_parser(1024)
                     print(message)
                     print('recieved feedback message is not the expected flag.')
                     rear = False
@@ -90,9 +105,23 @@ class serial_cnc_interface():
                 time.sleep(0.02)
         
         #Simple read block
-        message = self.ControllerCOM.read(char_limit)
+        message = self.cnc_interface_read_parser(char_limit)
         message = message.decode('utf-8')
         return message
+    
+    def cnc_interface_write_parser(self,data):
+        if type(data) == bytes:
+            self.ControllerCOM.write(data)
+            data_str = data.decode('utf-8')
+            if len(data_str) >= 80:
+                data_str = data_str[0:75]
+                data_str +=('[...]')
+            self.console_stdout_buffer.append(data)
+            return True
+        else:
+            print('unexpected data type',type(data))
+            return False
+        
     
     def write_cnc_serial(self,data,data_conditioner=True,feedback_check=True):
         if self.ControllerCOM == False: #serial availability checkpoint
@@ -101,7 +130,7 @@ class serial_cnc_interface():
         if data_conditioner == True: #condictioning data
             data = self.gcode_message_conditioner(data)
         
-        self.ControllerCOM.write(data) #write data
+        self.cnc_interface_write_parser(data) #write data
         
         #feedback listener
         if feedback_check == True:
@@ -116,18 +145,18 @@ class serial_cnc_interface():
             return True
 
 
-    def gcode_message_conditioner(message):
+    def gcode_message_conditioner(self,message):
         acceptable_command = ['G','M'] #Check if message is a valid command
         is_valid_command = False
-        for i in acceptable_comand:
+        for i in acceptable_command:
             if message[0] == i:
                 is_valid_command = True
             pass
         if is_valid_command == False:
             return False      
         if message[-1] != '\n': #Force a line break at end
-            message = data+'\n'
-        message = bytes(data,'utf-8') #encode to bytes
+            message = message+'\n'
+        message = bytes(message,'utf-8') #encode to bytes
         return message
     
     def CNCStatus(self):
@@ -216,9 +245,6 @@ class serial_cnc_interface():
         self.gcode_data[1] = target_line
         return True
         
-    def gcode_command_inster(command='None'):
-        return
-
     def run(self):
         self.find_serial_device()
         self.bind_communication()
@@ -228,11 +254,15 @@ class serial_cnc_interface():
 
 
 #quando recarregado, file_handler nao atualiza as propriedades gcode_data
-test = False
+test = True
 if test == True:
    tester = serial_cnc_interface()
    tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
    tester.run()
+   flushed = False
+   while flushed == False:
+       flushed = tester.read_cnc_serial(flush=True) #wait until read buffer is flushed in OS api.
+       
    #tester.write_cnc_serial('G28 X Y')
    #tester.gcode_stream_handler()
     
