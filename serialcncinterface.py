@@ -6,7 +6,7 @@ Created on Tue Oct 22 18:22:17 2019
 """
 import time
 import serial
-import serial.tools.list_ports as lp #return a object list with serial ports information
+import serial.tools.list_ports as lp  # return a object list with serial ports information
 import glob
 import os
 
@@ -15,21 +15,20 @@ class serial_cnc_interface():
     def __init__(self):
         #serial communication attributes
         self.setup_done = False
-        self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA' #Arduino Clone Instance, reference hwid
-        self.ControllerCOM = False #var will be further overwrited with serial comunmicator instance
-        self.ControllerPortName = str #var with the part name 
+        self.SerialPorts = []
+        self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA'  # Arduino Clone Instance, reference hwid
+        self.ControllerCOM = False # var will be further overwrited with serial comunmicator instance
+        self.ControllerPortName = str # var with the part name 
         self.console_stdout_buffer = []
-        
-        
+             
         #comand_file attributes
         self.gcode_status = 0
-        self.gcode_custom_message = ['Null']
-        self.gcode_data = [['0'],5,'Null',0] # [Gcode File, file line pos,file name, end of file line index]
+        self.gcode_custom_message = []
+        self.gcode_data = [['0'], 5, 'Null', 0]  # [Gcode File, file line pos,file name, end of file line index]
         self.gcode_datas_dir = ['']
         self.gcode_data_name = 'Null'
         self.gcode_data_adress = 'Null'
         self.gcode_datas_list = ['Null']
-        self.gcode_custom_message = []
 
     def find_serial_device(self):
         self.SerialPorts = lp.comports()
@@ -58,6 +57,7 @@ class serial_cnc_interface():
                 if len(data_str) >= 80:
                     data_str = data_str[0:75]
                     data_str +=('[...]')
+                data_str = '[r]:'+data_str
             self.console_stdout_buffer.append(data_str)
             return data
         else:
@@ -75,7 +75,6 @@ class serial_cnc_interface():
         if flush == True:
             dump = self.cnc_interface_read_parser(856)
             if len(dump) >= 856:
-                print(dump)
                 print('#'*80)
                 print('dump size insufficient, call flush again.')
                 print('#'*80)
@@ -116,6 +115,7 @@ class serial_cnc_interface():
             if len(data_str) >= 80:
                 data_str = data_str[0:75]
                 data_str +=('[...]')
+            data_str = '[w]:'+data_str
             self.console_stdout_buffer.append(data_str)
             return True
         else:
@@ -146,12 +146,12 @@ class serial_cnc_interface():
 
 
     def gcode_message_conditioner(self,message):
-        acceptable_command = ['G','M'] #Check if message is a valid command
+        acceptable_command = ['G', 'M'] #Check if message is a valid command
         is_valid_command = False
         for i in acceptable_command:
             if message[0] == i:
                 is_valid_command = True
-            pass
+            break
         if is_valid_command == False:
             return False      
         if message[-1] != '\n': #Force a line break at end
@@ -165,7 +165,7 @@ class serial_cnc_interface():
             self.ControllerCOM.flush()
             self.ControllerCOM.write(bytes("M105\n","utf-8"))
             status=self.read_cnc_serial()
-        except:
+        except AttributeError:
             status = 'Failed to comunicate.'
         return status
 
@@ -192,16 +192,19 @@ class serial_cnc_interface():
 
         if arg_def == 'test':
             gcode_data_name_l = 'test.gcode' # _l means a local scope var of instance propertie.
-            gcode_datas_list_l = glob.glob(os.path.join(gcode_datas_dir_l,'*.gcode'))
+            gcode_datas_list_l = glob.glob(os.path.join(gcode_datas_dir_l,
+                                                        '*.gcode'))
         elif arg_def == 'GetNewest':
-            gcode_datas_list_l = glob.glob(os.path.join(gcode_datas_dir_l,'*.gcode'))
+            gcode_datas_list_l = glob.glob(os.path.join(gcode_datas_dir_l,
+                                                        '*.gcode'))
             gcode_datas_list_l.sort(key=os.path.getctime,reverse=True)
             target_file_index = gcode_datas_list_l[0].rindex('\\') #finding star position of file name string.
             gcode_data_name_l = gcode_datas_list_l[0][target_file_index+1:] #extracting the file_name from path
         elif type(arg_def) == list: #set a path in index 0 and file name in index 1
             gcode_data_name_l = arg_def[1]
             gcode_datas_dir_l = arg_def[0]           
-            gcode_datas_list_l=[os.path.join(gcode_datas_dir_l,gcode_data_name_l)]
+            gcode_datas_list_l=[os.path.join(gcode_datas_dir_l, 
+                                             gcode_data_name_l)]
         else:
             print('Unexpected arg_def argument.')
             return False
@@ -213,15 +216,21 @@ class serial_cnc_interface():
         return True
 
     def gcode_stream_handler(self): #flush not working!!!
-        if self.gcode_custom_message != ['Null']:
-            self.ControllerCOM.flush()
+        if self.gcode_custom_message != []:
             for custom_message in self.gcode_custom_message:
                 self.write_cnc_serial(custom_message)
-            #self.gcode_custom_message = ['Null']
+                self.gcode_custom_message = []
         if self.gcode_status == 0:
-            return 'gcode_handler Idle'
+            return True
         elif self.gcode_status == 1:
-            return self.stream_gcode()
+            self.stream_gcode()
+            return True
+        elif self.gcode_status == 2:
+            while self.gcode_status == 2:
+                self.stream_gcode()
+                return True
+        else:
+            return False
 
     def stream_gcode(self):
         gc_line_pos = self.gcode_data[1]
@@ -245,6 +254,22 @@ class serial_cnc_interface():
         self.gcode_data[1] = target_line
         return True
         
+    def gcode_custom_insert(self,command,imediate=False):
+        commands = [['home','G28 X Y\n'],['stepper_d','M84\n'],['warm_n','M104 S235\n'],['warm_b','M140 S90\n'],['cool_n','M104 S0\n'],['cool_b','M140 S0\n'],['temp','M105\n']]
+        if type(command) == str:
+            command = [command]
+        for i in command:
+            for j in commands:
+                if i == j[0]:
+                    if imediate == True:
+                        self.write_cnc_serial(j[1])
+                    else:
+                        self.gcode_custom_message.append(j[1])
+                    break
+        return True
+        
+                
+    
     def run(self):
         self.find_serial_device()
         self.bind_communication()
@@ -256,12 +281,12 @@ class serial_cnc_interface():
 #quando recarregado, file_handler nao atualiza as propriedades gcode_data
 test = True
 if test == True:
-   tester = serial_cnc_interface()
-   tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
-   tester.run()
-   flushed = False
-   while flushed == False:
-       flushed = tester.read_cnc_serial(flush=True) #wait until read buffer is flushed in OS api.
+    tester = serial_cnc_interface()
+    tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
+    tester.run()
+    # flushed = False
+    # while flushed == False:
+    #     flushed = tester.read_cnc_serial(flush=True) #wait until read buffer is flushed in OS api.
        
    #tester.write_cnc_serial('G28 X Y')
    #tester.gcode_stream_handler()
