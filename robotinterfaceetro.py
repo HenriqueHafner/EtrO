@@ -47,22 +47,31 @@ def THREAD_3_script():
     return True
 
 def THREAD_4_script():
-    time.sleep(2)
-    import ControlerXbox
-    ControlerXbox.JoyHandler.initcontrol()
-    BordcastControllState = 1
-    ContrState = ControlerXbox.JoyHandler.UpdateControl() #first requisition
-    while BordcastControllState == 1:
-        ContrlastState = ContrState #reminding last state to perceive event
-        ContrState = ControlerXbox.JoyHandler.UpdateControl()
-        ClientNewState = ControlEvent(ContrState,ContrlastState)
-        gui.ClientState[1] = ClientNewState
-        time.sleep(50/1000)
+    # time.sleep(2)
+    # import ControlerXbox
+    # ControlerXbox.JoyHandler.initcontrol()
+    # BordcastControllState = 1
+    # ContrState = ControlerXbox.JoyHandler.UpdateControl() #first requisition
+    # while BordcastControllState == 1:
+    #     ContrlastState = ContrState #reminding last state to perceive event
+    #     ContrState = ControlerXbox.JoyHandler.UpdateControl()
+    #     ClientNewState = ControlEvent(ContrState,ContrlastState)
+    #     gui.ClientState[1] = ClientNewState
+    #     time.sleep(50/1000)
     return True
 
 @etrogui.eel.expose
 def update_client():
     return GUI.gcode_display
+
+@etrogui.eel.expose
+def serial_console_monitor():
+    if len(CNC_INTERFACE.console_stdout_buffer) == 0:
+        return True
+    else:
+        message = CNC_INTERFACE.console_stdout_buffer[0]
+        del CNC_INTERFACE.console_stdout_buffer[0]
+    return message
 
 
 THREAD_1 = threading.Thread(name='EtrOGUI server', target=THREAD_1_script)
