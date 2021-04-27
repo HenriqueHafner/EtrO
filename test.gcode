@@ -1,39 +1,3 @@
-;FLAVOR:Marlin
-;TIME:4879
-;Filament used: 1.84353m
-;Layer height: 0.1
-;MINX:73.38
-;MINY:84.301
-;MINZ:0.2
-;MAXX:128.188
-;MAXY:115.695
-;MAXZ:45
-;Generated with Cura_SteamEngine 4.7.1
-M140 S100
-M105
-M190 S100
-M104 S240
-M105
-M109 S240
-M82 ;absolute extrusion mode
-G21 ;metric values
-G90 ;absolute positioning
-M82 ;set extruder to absolute mode
-M107 ;start with the fan off
-G1 Z5.0 F9000 ;move the platform down 5mm
-G92 E0 ;zero the extruded length
-G1 F200 E0.5 ;extrude 0.5mm of feed stock
-G92 E0 ;zero the extruded length again
-G1 F9000
-;Put printing message on LCD screen
-M117 Printing
-G92 E0
-G92 E0
-;LAYER_COUNT:449
-;LAYER:0
-M107
-G0 F600 X75.678 Y85.57 Z0.2
-;TYPE:SKIRT
 G1 F480 X76.227 Y85.177 E0.03368
 G1 X76.818 Y84.852 E0.06733
 G1 X77.444 Y84.599 E0.10102

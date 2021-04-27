@@ -33,23 +33,9 @@ function view_container_create(element_idtoset) {
 
 }
 
-async function update_client() {
-    let value = await eel.update_client()();
-	ctx.fillStyle = '#808080'; //define estilo do que vai ser desenhado
-	ctx.fillRect(0, 0, canvas.width, canvas.height); //Limpar area a ser desenhada
-	ctx.fillStyle = '#ffffff'; //cor do texto
-	ctx.font = '20px serif'; // formatting text
-	
-	var linecount = 1;
-	for (var i in value) {
-		ctx.fillText(value[i],10,linecount*20);
-		linecount ++
-    ctx.stroke();
-	}
-}
-
-
 view_container_create("gcode_terminal")
-var UpdateClientRoutine = setInterval(update_client, 5);
+view_container_create("serial_console")
+
+
 
 

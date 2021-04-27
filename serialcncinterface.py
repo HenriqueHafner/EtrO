@@ -24,8 +24,9 @@ class serial_cnc_interface():
         self.datatable = [[0,'','']]*self.datatable_len
         self.datatable_ipos = 0  # Position to insert new messages
         self.datatable_mindex = 0  # last message line number 
-        self.console_stdout_data = ['']*11
-             
+        self.feedback_status = [False,'index','message calling feedback ','index','feedback message',0]
+        self.console_stdout_data = []
+
         #comand_file attributes
         self.gcode_status = 0
         self.gcode_custom_message = []
@@ -44,7 +45,7 @@ class serial_cnc_interface():
                 return True
         self.ControllerPortName = 'Null'
         return False
-        
+
     def bind_communication(self):
         ControllerPortName = self.ControllerPortName
         if ControllerPortName != 'Null':
@@ -65,10 +66,14 @@ class serial_cnc_interface():
         return flush_status
 
     def datatable_insert_data(self,data,label=''):
+        """Insert data with label to the datatable list.
+        """
+        if data == False:
+            data = 'Invalid command.'
         if type(data) == bytes:
             data = data.decode('utf-8')
         if type(data) == str:
-            data = data.split('\n')
+            data = [data]
         # from here, data must be a list of string messages.
         if type(data) != list:
             print("failed to assure 'data' is list()")
@@ -85,23 +90,23 @@ class serial_cnc_interface():
         self.datatable_mindex = mindex
         return True
 
-    def console_data_insert(self, data, label = ''):
-        if type(data) == str:
-            data = [data]
-        elif type(data) == bytes:
-            data = data.decode('utf-8')
-            data = data.split('\n')
-        for data_str in data:
-            data_str = label+data_str
-            if len(data_str) >= 80:
-                data_str = data_str[0:75]
-                data_str += ('[...]')
-            self.console_stdout_data.append(data_str)
-            del self.console_stdout_data[0]
+    def console_data_update(self):
+        datatable = sorted(self.datatable, reverse=True)
+        stdout_data_l = []
+        for message in datatable:
+            nessage_str = message[1]+message[2]
+            if len(nessage_str) >= 80:
+                nessage_str = nessage_str[0:75]
+                nessage_str += ('[...]')
+            stdout_data_l.append(nessage_str)
+            if len(stdout_data_l) >= 12:
+                break
+        self.console_stdout_data = stdout_data_l
         return True
 
     def serial_parse_buffer(self): 
-        """ take data from serial API buffer to memory scope buffer
+        """ take data from serial API buffer and copy it to memory scope buffer
+        The transposed data is ereased from source serial API buffer.
         """
         #check if binded
         if self.ControllerCOM == False:                
@@ -109,21 +114,18 @@ class serial_cnc_interface():
             return False
         data = ''
         readbuffer_size = self.ControllerCOM.in_waiting  # keep reading buffer until have less than this.
-        while readbuffer_size >= 0:
+        while readbuffer_size > 0:
             data_piece = self.ControllerCOM.read(readbuffer_size)
-            data_piece = data.decode('utf-8')
+            data_piece = data_piece.decode('utf-8')
             data += data_piece
             if readbuffer_size > 850: #buffer was full
                 time.sleep(0.1) # give some time to incomming data
             readbuffer_size = self.ControllerCOM.in_waiting
         self.serial_buffed_data += data
         return True
-    
-    def incomming_data_hadler(self):
+
+    def incomming_data_handler(self):
         '''
-        Returns
-        -------
-        bool
             it recoganizes messages with '\n' ending from serial_buffed_data 
             and inserts it in datatable
         '''
@@ -141,64 +143,58 @@ class serial_cnc_interface():
             else:
                 message_piece += char
         if len(messages) > 0:  # messages found
-            self.datatable_insert_data(messages)
-        if len(message_piece) > 0:  # residue in buffer with no '\n'
-            self.serial_buffed_data = message_piece
+            self.datatable_insert_data(messages,'[r ]:')
+        # if len(message_piece) > 0:  # residue in buffer with no '\n'
+        self.serial_buffed_data = message_piece  
         return True
-            
-            
-            
-        self.datatable_insert_data(messages,'[r]:')
 
-        return True
-    
-    def serial_feedback_handler(self):
-        # feedback = False
-        # feedback_timeout = 1
-        # # feedback waiting block
-        # if feedback != False:  
-        #     rear = True
-        #     stime = time.time()
-        #     while rear == True:
-        #         message = self.cnc_interface_read_parser(len(feedback))
-        #         if debug == True: print(message)
-        #         if message == feedback:
-        #             rear = False
-        #             return True
-        #         elif len(message) > 0:
-        #             message = message+self.cnc_interface_read_parser(1024)
-        #             print(message)
-        #             print('recieved feedback message is not the expected flag.')
-        #             rear = False
-        #             return False
-        #         elif time.time()-stime > feedback_timeout:
-        #             rear = False
-        #             return 'Timeout, '+str(feedback_timeout)+' seconds with no respose.'
-        #         time.sleep(0.02)
-        return True
-  
-      
-    def write_cnc_serial(self,data,data_conditioner=True,feedback_check=True):
-        if self.ControllerCOM == False: #serial availability checkpoint
-            print('Missing serial Device. ',data)
-            return False          
+    def write_cnc_serial(self,data,data_conditioner=True,feedback_check=False):
+        if self.feedback_status[0] == True:
+            self.serial_feedback_handler()
+            if self.feedback_status[0] == True:
+                print('Unable to write, still waiting for feedback')
+                print(self.feedback_status)
+                self.datatable_insert_data(data,'fail!')
+                return False
+        
         if data_conditioner == True: #condictioning data
             data = self.gcode_message_conditioner(data)
+        label='[w ]:'
         
-
-        self.cnc_interface_write_parser(data) #write data
-
-        #feedback listener
-        if feedback_check == True:
-            feedback_message = bytes('ok\n','utf-8')
-            sucess_flag = self.serial_read(feedback=feedback_message,
-                                             char_limit=len(feedback_message))
-            if sucess_flag == True:
-                return True
-            else:
-                return False
+        if data is not False:
+            #feedback listener
+            if feedback_check == True:
+                label='[wf]:'
+                self.feedback_status[0] = True
+                self.feedback_status[2] = data
+                self.feedback_status[5] = time.time()
+            #  check output cue
+        
+        if self.ControllerCOM == False: #serial availability checkpoint
+            print('Write: ',data,' no device binded to write.')
         else:
-            return True
+            write_status = self.ControllerCOM.write(data) #write data
+        self.datatable_insert_data(data,label)
+        return True
+
+    def serial_feedback_handler(self):
+        # implement datatable correlation
+        if self.feedback_status[0] == True:
+            self.serial_parse_buffer()
+            if self.serial_buffed_data.rfind('ok') > -1:
+                self.incomming_data_handler()
+                self.feedback_status[0] = False
+                return False
+            else:
+                if time.time() - self.feedback_status[5] > 30:
+                    self.feedback_status[0] = False
+                    self.feedback_status[4] = 'No feedback recieved'
+                    print('feedback timeout')
+                    return False
+                time.sleep(0.002)
+                return True
+        else:
+            return False  # True means keep wating for feedback.
 
     def gcode_message_conditioner(self,message):
         acceptable_command = ['G', 'M'] #Check if message is a valid command
@@ -206,27 +202,13 @@ class serial_cnc_interface():
         for i in acceptable_command:
             if message[0] == i:
                 is_valid_command = True
-            break
+                break
         if is_valid_command == False:
             return False      
         if message[-1] != '\n': #Force a line break at end
             message = message+'\n'
         message = bytes(message,'utf-8') #encode to bytes
         return message
-    
-    def CNCStatus(self):
-        status = 'Null'
-        try:
-            self.ControllerCOM.flush()
-            self.ControllerCOM.write(bytes("M105\n","utf-8"))
-            status=self.serial_read()
-        except AttributeError:
-            status = 'Failed to comunicate.'
-        return status
-
-    def close(self):
-        self.ControllerCOM.close()
-        return True
 
     def gcode_set_data(self):
         with open(self.gcode_data_adress) as f:
@@ -267,34 +249,36 @@ class serial_cnc_interface():
         self.gcode_data_name = gcode_data_name_l
         self.gcode_datas_dir = gcode_datas_dir_l
         self.gcode_datas_list = gcode_datas_list_l
-        self.gcode_data_adress = os.path.join(gcode_datas_dir_l,gcode_data_name_l)
+        self.gcode_data_adress = os.path.join(gcode_datas_dir_l,
+                                              gcode_data_name_l)
         return True
 
     def gcode_stream_handler(self): #flush not working!!!
-        if self.gcode_custom_message != []:
-            for custom_message in self.gcode_custom_message:
-                self.write_cnc_serial(custom_message)
-                self.gcode_custom_message = []
-        if self.gcode_status == 0:
+        if   self.gcode_status == 0:
             return True
         elif self.gcode_status == 1:
-            self.gcode_stream()
+            if len(self.gcode_custom_message) > 0:
+                self.write_cnc_serial(self.gcode_custom_message.pop(0),
+                                      feedback_check=True)
             return True
         elif self.gcode_status == 2:
-            while self.gcode_status == 2:
+            self.serial_feedback_handler()
+            if self.feedback_status[0] == False:
                 self.gcode_stream()
-                return True
+            return True
         else:
             return False
 
     def gcode_stream(self):
         gc_line_pos = self.gcode_data[1]
         gc_linebwrite = self.gcode_data[0][gc_line_pos]
-        self.gcode_data[1] +=1
-        if gc_linebwrite[0] == ';':
-            return 'Not valid command line'
-        self.write_cnc_serial(gc_linebwrite)
-        return True 
+        write_status = self.write_cnc_serial(gc_linebwrite,
+                                             feedback_check=True)
+        if write_status == True:
+            self.gcode_data[1] +=1
+            return True
+        else:
+            return False
     
     def gcode_move_lastlinepos(self,line,operator='abs'):
         curr_line = self.gcode_data[1]
@@ -322,9 +306,7 @@ class serial_cnc_interface():
                         self.gcode_custom_message.append(j[1])
                     break
         return True
-        
-                
-    
+
     def run(self):
         self.find_serial_device()
         self.bind_communication()
@@ -332,22 +314,91 @@ class serial_cnc_interface():
         self.gcode_set_data()
         self.setup_done = True
 
+CNC_INTERFACE = serial_cnc_interface()
+CNC_INTERFACE.run()
 
-#quando recarregado, file_handler nao atualiza as propriedades gcode_data
-test = True
+time.sleep(3)
+CNC_INTERFACE.serial_parse_buffer()
+CNC_INTERFACE.incomming_data_handler()
+CNC_INTERFACE.console_data_update()
+print(CNC_INTERFACE.console_stdout_data[0:5])
+time.sleep(1)
+
+# CNC_INTERFACE.gcode_custom_insert('temp')
+# CNC_INTERFACE.gcode_status = 1
+# CNC_INTERFACE.gcode_stream_handler()
+# counter = 0
+# while CNC_INTERFACE.feedback_status[0] == True:
+#     CNC_INTERFACE.serial_feedback_handler()
+#     counter += 1
+# print(counter)
+# print(CNC_INTERFACE.feedback_status)
+# CNC_INTERFACE.incomming_data_handler()
+# CNC_INTERFACE.console_data_update()
+# print(CNC_INTERFACE.console_stdout_data[0:5])
+
+CNC_INTERFACE.gcode_custom_insert('home',imediate=True)
+CNC_INTERFACE.gcode_data_handler()
+CNC_INTERFACE.gcode_set_data()
+CNC_INTERFACE.gcode_status = 2
+counter = 0
+while CNC_INTERFACE.gcode_data[1] < 197:
+    CNC_INTERFACE.gcode_stream_handler()
+    CNC_INTERFACE.console_data_update()
+    # print(CNC_INTERFACE.console_stdout_data[0])
+    counter += 1
+    time.sleep(0.05)
+print(CNC_INTERFACE.console_stdout_data)
+print(counter)
+    
+test = False
 if test == True:
     tester = serial_cnc_interface()
-    #tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
     tester.run()
-    # flushed = False
-    # while flushed == False:
-    #     flushed = tester.serial_read(flush=True) #wait until read buffer is flushed in OS api.
-    tester.serial_buffed_data = 'command1 arg1\ncommand2 arg2\ntestesteste123123\n; teste teste\ncommand3 xyz\nincomp...'#.encode('utf-8')
-    #tester.datatable_insert_data(serial_read_ex,'[r]:')
-    #tester.console_data_insert(serial_read_ex,'[r]:')
-    tester.incomming_data_hadler()
-    #tester.write_cnc_serial('G28 X Y')
-    #tester.gcode_stream_handler()
+
+    # Tester for incomming serial data.
+    tester.serial_parse_buffer()
+    if tester.serial_buffed_data == '' : tester.serial_buffed_data = 'Tester arg1\nNo Serial Binded arg2\nG01 X23 Y43\nincomplete_message...'#.encode('utf-8')
+    
+    tester.incomming_data_handler() #take data from API Serial interface to program scope.
+    # print(tester.serial_buffed_data)
+    # print(tester.datatable)
+    
+    tester.serial_buffed_data += 'abc\n'#.encode('utf-8')
+    tester.incomming_data_handler() #take data from API Serial interface to program scope.
+    # print(tester.serial_buffed_data)
+    # print(tester.datatable)
+
+    data_to_write = 'Gtester X43.2 Y44.1'
+    tester.write_cnc_serial(data_to_write)
+    data_to_write = ';Invalid Command Tester'
+    tester.write_cnc_serial(data_to_write)
+    # print(tester.datatable)
+
+    # print(tester.serial_buffed_data)
+    
+    print(tester.serial_buffed_data)
+    data_to_write = 'GFeedbackTest X43.2 Y44.1'
+    tester.write_cnc_serial(data_to_write,feedback_check=True)
+    tester.serial_buffed_data += 'Ok!\n'
+    tester.write_cnc_serial('GToWrite',feedback_check=True)
+    tester.write_cnc_serial('GToFail',feedback_check=True)
+    tester.serial_buffed_data += 'Ok!\n'
+    tester.serial_feedback_handler()
+
+    tester.gcode_stream_handler()
+    tester.gcode_custom_message = ['Gcustom','Message','G CMtester']
+    tester.gcode_status = 1
+    tester.gcode_stream_handler()
+    tester.serial_buffed_data += 'Ok!\n'
+    tester.gcode_stream_handler()
+    tester.serial_buffed_data += 'Ok!\n'
+    tester.gcode_stream_handler()
+
+    print(tester.serial_buffed_data)
+    print(tester.datatable)
+
+    #tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
      
 
 
