@@ -34,7 +34,8 @@ function view_container_create(element_idtoset) {
 }
 
 view_container_create("gcode_terminal")
-view_container_create("serial_console")
+view_container_create("serial_monitor")
+view_container_create("cnc_monitor")
 
 
 

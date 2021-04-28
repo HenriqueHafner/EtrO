@@ -34,11 +34,6 @@ def THREAD_1_script():
 
 def THREAD_2_script():
     time.sleep(1)
-    update_displays = True
-    while(True):
-        if update_displays == True:
-            GUI.gcode_displaydata_fill(CNC_INTERFACE)
-            time.sleep(0.1)
     return True 
 
 def THREAD_3_script():
@@ -61,17 +56,16 @@ def THREAD_4_script():
     return True
 
 @etrogui.eel.expose
-def update_client():
-    return GUI.gcode_display
+def update_container_gcode_terminal():
+    return GUI.gcode_terminal_handler(CNC_INTERFACE)
 
 @etrogui.eel.expose
-def serial_console_monitor():
-    if len(CNC_INTERFACE.console_stdout_buffer) == 0:
-        return True
-    else:
-        message = CNC_INTERFACE.console_stdout_buffer[0]
-        del CNC_INTERFACE.console_stdout_buffer[0]
-    return message
+def update_monitor_serial():
+    return GUI.monitor_serial_handler(CNC_INTERFACE)
+
+@etrogui.eel.expose
+def update_monitor_cnc():
+    return GUI.monitor_cnc_handler(CNC_INTERFACE)
 
 
 THREAD_1 = threading.Thread(name='EtrOGUI server', target=THREAD_1_script)

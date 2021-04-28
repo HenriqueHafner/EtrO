@@ -15,22 +15,26 @@ class serial_cnc_interface():
     def __init__(self):
         #serial communication attributes
         self.setup_done = False
+        self.loop_flag = True
         self.SerialPorts = []
         self.serial_buffed_data = ''
         self.Controller_hwid = 'USB VID:PID=0403:6001 SER=AK006ZRFA'  # Arduino Clone Instance, reference hwid
         self.ControllerCOM = False  # var will be further overwrited with serial comunmicator instance
         self.ControllerPortName = str  # var with the part name 
         self.datatable_len = 30
-        self.datatable = [[0,'','']]*self.datatable_len
+        self.datatable = [[0,'way','message']]*self.datatable_len
         self.datatable_ipos = 0  # Position to insert new messages
         self.datatable_mindex = 0  # last message line number 
         self.feedback_status = [False,'index','message calling feedback ','index','feedback message',0]
         self.console_stdout_data = []
+        self.monitor_data = []
+        self.monitor_timestamp = 0
 
         #comand_file attributes
         self.gcode_status = 0
         self.gcode_custom_message = []
         self.gcode_data = [['0'], 5, 'Null', 0]  # [Gcode File, file line pos,file name, end of file line index]
+        self.gcode_max_index_line = 0
         self.gcode_datas_dir = ['']
         self.gcode_data_name = 'Null'
         self.gcode_data_adress = 'Null'
@@ -68,6 +72,7 @@ class serial_cnc_interface():
     def datatable_insert_data(self,data,label=''):
         """Insert data with label to the datatable list.
         """
+        label = label[:5]
         if data == False:
             data = 'Invalid command.'
         if type(data) == bytes:
@@ -90,7 +95,7 @@ class serial_cnc_interface():
         self.datatable_mindex = mindex
         return True
 
-    def console_data_update(self):
+    def monitor_serial_update(self,return_data=True):
         datatable = sorted(self.datatable, reverse=True)
         stdout_data_l = []
         for message in datatable:
@@ -99,9 +104,37 @@ class serial_cnc_interface():
                 nessage_str = nessage_str[0:75]
                 nessage_str += ('[...]')
             stdout_data_l.append(nessage_str)
-            if len(stdout_data_l) >= 12:
+            if len(stdout_data_l) >= 10:
                 break
-        self.console_stdout_data = stdout_data_l
+        if return_data == True:
+            return stdout_data_l
+        else:
+            self.console_stdout_data = stdout_data_l
+            return True
+
+    def monitor_cnc_update(self,return_data=True):
+        if self.ControllerCOM == False:                
+            print('No serial device binded.')
+            return False
+        
+        if time.time() - self.monitor_timestamp > 0.5:
+            self.monitor_timestamp = time.time()
+            if len(self.gcode_custom_message) == 0:
+                self.gcode_custom_insert('temp')
+        
+        monitor_data_l = ['T:']
+        updated = False
+        for i in range(len(monitor_data_l)):
+            key = monitor_data_l[0] # monitor_data_l[i]
+        datatable = sorted(self.datatable, reverse=True)
+        for entry in datatable: # esta pegando o ultimo em datatable e nao o mais recente
+            if entry[1].count('r') > 0 and entry[2].count(key) > 0:
+                monitor_data_l[i] = entry[2]
+                updated = True
+        if updated == True:
+            self.monitor_data = monitor_data_l
+        if return_data == True:
+            return self.monitor_data
         return True
 
     def serial_parse_buffer(self): 
@@ -173,7 +206,7 @@ class serial_cnc_interface():
         if self.ControllerCOM == False: #serial availability checkpoint
             print('Write: ',data,' no device binded to write.')
         else:
-            write_status = self.ControllerCOM.write(data) #write data
+            self.ControllerCOM.write(data) #write data
         self.datatable_insert_data(data,label)
         return True
 
@@ -191,7 +224,6 @@ class serial_cnc_interface():
                     self.feedback_status[4] = 'No feedback recieved'
                     print('feedback timeout')
                     return False
-                time.sleep(0.002)
                 return True
         else:
             return False  # True means keep wating for feedback.
@@ -221,6 +253,7 @@ class serial_cnc_interface():
         self.gcode_data[1] = 0
         self.gcode_data[2] = gcode_data_name_l
         self.gcode_data[3] = len(gcode_data_l)-1 # subtractin 1 to start in line 0 index 0
+        self.gcode_max_index_line = len(self.gcode_data[0])-1
         return True
 
     def gcode_data_handler(self,arg_def='test',gcode_datas_dir_l='None'):#pick a gcode file
@@ -253,21 +286,18 @@ class serial_cnc_interface():
                                               gcode_data_name_l)
         return True
 
-    def gcode_stream_handler(self): #flush not working!!!
-        if   self.gcode_status == 0:
-            return True
-        elif self.gcode_status == 1:
+    def gcode_stream_handler(self):
+        if self.feedback_status[0] == True:
+            self.serial_feedback_handler()
+            return False
+        if self.gcode_status >= 1:
             if len(self.gcode_custom_message) > 0:
                 self.write_cnc_serial(self.gcode_custom_message.pop(0),
                                       feedback_check=True)
-            return True
-        elif self.gcode_status == 2:
-            self.serial_feedback_handler()
-            if self.feedback_status[0] == False:
+                return True
+            if self.gcode_status == 2:
                 self.gcode_stream()
-            return True
-        else:
-            return False
+        return True
 
     def gcode_stream(self):
         gc_line_pos = self.gcode_data[1]
@@ -275,6 +305,9 @@ class serial_cnc_interface():
         write_status = self.write_cnc_serial(gc_linebwrite,
                                              feedback_check=True)
         if write_status == True:
+            if self.gcode_data[1] >= self.gcode_max_index_line:
+                self.gcode_status = 1
+                return True
             self.gcode_data[1] +=1
             return True
         else:
@@ -307,52 +340,78 @@ class serial_cnc_interface():
                     break
         return True
 
+    def loop(self):
+        self.serial_parse_buffer()
+        self.gcode_stream_handler()
+        time.sleep(0.02)
+
     def run(self):
         self.find_serial_device()
         self.bind_communication()
         self.gcode_data_handler('GetNewest')
         self.gcode_set_data()
         self.setup_done = True
+        self.loop_flag = True
+        self.gcode_data_handler()
+        self.gcode_set_data()
+        self.gcode_status = 1
+        while self.loop_flag == True:
+            self.loop()
 
-CNC_INTERFACE = serial_cnc_interface()
-CNC_INTERFACE.run()
 
-time.sleep(3)
-CNC_INTERFACE.serial_parse_buffer()
-CNC_INTERFACE.incomming_data_handler()
-CNC_INTERFACE.console_data_update()
-print(CNC_INTERFACE.console_stdout_data[0:5])
-time.sleep(1)
 
-# CNC_INTERFACE.gcode_custom_insert('temp')
-# CNC_INTERFACE.gcode_status = 1
-# CNC_INTERFACE.gcode_stream_handler()
-# counter = 0
-# while CNC_INTERFACE.feedback_status[0] == True:
-#     CNC_INTERFACE.serial_feedback_handler()
-#     counter += 1
-# print(counter)
-# print(CNC_INTERFACE.feedback_status)
-# CNC_INTERFACE.incomming_data_handler()
-# CNC_INTERFACE.console_data_update()
-# print(CNC_INTERFACE.console_stdout_data[0:5])
-
-CNC_INTERFACE.gcode_custom_insert('home',imediate=True)
-CNC_INTERFACE.gcode_data_handler()
-CNC_INTERFACE.gcode_set_data()
+# CNC_INTERFACE.gcode_custom_insert('home',imediate=True)
 CNC_INTERFACE.gcode_status = 2
-counter = 0
-while CNC_INTERFACE.gcode_data[1] < 197:
-    CNC_INTERFACE.gcode_stream_handler()
-    CNC_INTERFACE.console_data_update()
-    # print(CNC_INTERFACE.console_stdout_data[0])
-    counter += 1
-    time.sleep(0.05)
-print(CNC_INTERFACE.console_stdout_data)
-print(counter)
+
+# counter = 0
+# while CNC_INTERFACE.gcode_data[1] < 100:
+#     CNC_INTERFACE.gcode_stream_handler()
+#     CNC_INTERFACE.monitor_serial_update()
+#     # print(CNC_INTERFACE.console_stdout_data[0])
+#     counter += 1
+#     time.sleep(0.05)
+
+flag_test1 = False
+if flag_test1 == True:
+    CNC_INTERFACE = serial_cnc_interface()
+    CNC_INTERFACE.run()
     
-test = False
-if test == True:
+    time.sleep(3)
+    CNC_INTERFACE.serial_parse_buffer()
+    CNC_INTERFACE.incomming_data_handler()
+    CNC_INTERFACE.monitor_serial_update()
+    print(CNC_INTERFACE.console_stdout_data[0:5])
+    time.sleep(1)
+    
+    # CNC_INTERFACE.gcode_custom_insert('temp')
+    # CNC_INTERFACE.gcode_status = 1
+    # CNC_INTERFACE.gcode_stream_handler()
+    # counter = 0
+    # while CNC_INTERFACE.feedback_status[0] == True:
+    #     CNC_INTERFACE.serial_feedback_handler()
+    #     counter += 1
+    # print(counter)
+    # print(CNC_INTERFACE.feedback_status)
+    # CNC_INTERFACE.incomming_data_handler()
+    # CNC_INTERFACE.monitor_serial_update()
+    # print(CNC_INTERFACE.console_stdout_data[0:5])
+    
+    CNC_INTERFACE.gcode_custom_insert('home',imediate=True)
+    CNC_INTERFACE.gcode_data_handler()
+    CNC_INTERFACE.gcode_set_data()
+    CNC_INTERFACE.gcode_status = 2
+    counter = 0
+    while CNC_INTERFACE.gcode_data[1] < 197:
+        CNC_INTERFACE.gcode_stream_handler()
+        CNC_INTERFACE.monitor_serial_update()
+        # print(CNC_INTERFACE.console_stdout_data[0])
+        counter += 1
+        time.sleep(0.05)
+    print(CNC_INTERFACE.console_stdout_data)
+    print(counter)
+    
+flag_test2 = False
+if flag_test2 == True:
     tester = serial_cnc_interface()
     tester.run()
 
@@ -380,23 +439,26 @@ if test == True:
     print(tester.serial_buffed_data)
     data_to_write = 'GFeedbackTest X43.2 Y44.1'
     tester.write_cnc_serial(data_to_write,feedback_check=True)
-    tester.serial_buffed_data += 'Ok!\n'
+    tester.serial_buffed_data += 'ok\n'
     tester.write_cnc_serial('GToWrite',feedback_check=True)
     tester.write_cnc_serial('GToFail',feedback_check=True)
-    tester.serial_buffed_data += 'Ok!\n'
+    tester.serial_buffed_data += 'ok\n'
     tester.serial_feedback_handler()
 
     tester.gcode_stream_handler()
-    tester.gcode_custom_message = ['Gcustom','Message','G CMtester']
+    tester.gcode_custom_message = ['Gcustom','Message']
     tester.gcode_status = 1
     tester.gcode_stream_handler()
-    tester.serial_buffed_data += 'Ok!\n'
+    tester.serial_buffed_data += 'ok\n'
     tester.gcode_stream_handler()
-    tester.serial_buffed_data += 'Ok!\n'
+    tester.serial_buffed_data += 'ok\n'
     tester.gcode_stream_handler()
 
-    print(tester.serial_buffed_data)
-    print(tester.datatable)
+    for i in tester.datatable: print(i)
+    
+    tester.gcode_status = 2
+    tester.monitor_cnc_update(return_data=False)    
+    print(tester.monitor_data)
 
     #tester.gcode_custom_message = ['G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287','G1 X107.958 Y94.685','G1 X109.303 Y95.497','G1 X109.387 Y95.524','G1 X110 Y95.805','G1 X110.576 Y96.157','G1 X111.011 Y96.5','G1 F480 X101.084 Y92.419','G1 X101.379 Y92.547','G1 X103.682 Y92.844','G1 X104.345 Y92.969','G1 X104.989 Y93.173','G1 X105.604 Y93.45','G1 X106.182 Y93.799','G1 X106.557 Y94.08','G1 X107.164 Y94.287']
      
