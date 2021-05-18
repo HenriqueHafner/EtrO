@@ -1,9 +1,5 @@
 var canvas_cnc = document.getElementById("canvas_cnc_monitor"); //instancia controladora do canvas_cnc
 var ctx_cnc = canvas_cnc.getContext("2d"); //instancia do operador grafico 2d
-ctx_cnc.beginPath();    
-ctx_cnc.lineWidth = "2";
-ctx_cnc.strokeStyle = "white";
-ctx_cnc.rect(2, 105, 496, 18);
 
 async function update_container_cnc() {
     let value = await eel.update_monitor_cnc()();

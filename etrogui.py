@@ -39,4 +39,3 @@ class gui():
     
     def monitor_cnc_handler(self,cnc_interface_obj):
         return cnc_interface_obj.monitor_cnc_update()
-    

@@ -43,16 +43,6 @@ def THREAD_3_script():
 
 def THREAD_4_script():
     # time.sleep(2)
-    # import ControlerXbox
-    # ControlerXbox.JoyHandler.initcontrol()
-    # BordcastControllState = 1
-    # ContrState = ControlerXbox.JoyHandler.UpdateControl() #first requisition
-    # while BordcastControllState == 1:
-    #     ContrlastState = ContrState #reminding last state to perceive event
-    #     ContrState = ControlerXbox.JoyHandler.UpdateControl()
-    #     ClientNewState = ControlEvent(ContrState,ContrlastState)
-    #     gui.ClientState[1] = ClientNewState
-    #     time.sleep(50/1000)
     return True
 
 @etrogui.eel.expose
