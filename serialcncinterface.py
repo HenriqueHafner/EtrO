@@ -243,6 +243,7 @@ class serial_cnc_interface():
                 is_valid_command = True
                 break
         if is_valid_command == False:
+            print('invalid command: ',message)
             return False      
         if message[-1] != '\n': #Force a line break at end
             message = message+'\n'
@@ -322,7 +323,7 @@ class serial_cnc_interface():
             return True
         else:
             return False
-    
+
     def gcode_move_lastlinepos(self,line,operator='abs'):
         curr_line = self.gcode_data[1]
         target_line = None
@@ -341,13 +342,15 @@ class serial_cnc_interface():
                     ['warm_n','M104 S235\n'],['warm_b','M140 S90\n'],
                     ['cool_n','M104 S0\n'],['cool_b','M140 S0\n'],
                     ['stats','M105\n'],
-                    ['move+n',],['move_c1',],
-                    ['move_c2',],['move_c3',],
-                    ['move-z',],['move+z',],
+                    ['move_c1','G0 X10 Y30\n'],
+                    ['move_c2','G0 X85 Y160\n'],
+                    ['move_c3','G0 X160 Y30\n'],
+                    ['move-z','G91\n','G1 Z-0.05','G90\n'],
+                    ['move+z','G91\n','G1 Z0.05','G90\n'],
                     ]
         for i in commands:
             if command == i[0]:
-                self.gcode_custom_message.append(i[1])
+                self.gcode_custom_message += i[1:]
                 return True
                 break
         return False
