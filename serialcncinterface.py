@@ -130,7 +130,7 @@ class serial_cnc_interface():
             return self.monitor_data
         return True
 
-    def monitor_get_status(self,command,feedback_key):
+    def monitor_get_status(self,command,feedback_key): #insere comando no custom message se a fila for zero, procura no buffer se houve resposta.
         datatable = sorted(self.datatable, reverse=True)
         if len(self.gcode_custom_message) == 0:
             self.gcode_custom_message.append(command)
@@ -308,15 +308,20 @@ class serial_cnc_interface():
                 return True
             if self.gcode_status == 2:
                 self.gcode_stream()
+                
         return True
 
     def gcode_stream(self):
+        check_flag = self.gcode_check_flag()
+        if check_flag == True:
+            return False
         gc_line_pos = self.gcode_data[1]
         gc_linebwrite = self.gcode_data[0][gc_line_pos]
+        gcode_feedback_demand = self.gcode_feedback_demand(gc_linebwrite)
         write_status = self.write_cnc_serial(gc_linebwrite,
-                                             feedback_check=True)
+                                             feedback_check=gcode_feedback_demand)
         if write_status == True:
-            if self.gcode_data[1] >= self.gcode_max_index_line:
+            if self.gcode_data[1] >= self.gcode_max_index_line:  #Checking if achieved end of gcode file.
                 self.gcode_status = 1
                 return True
             self.gcode_data[1] +=1
@@ -337,6 +342,25 @@ class serial_cnc_interface():
         self.gcode_data[1] = target_line
         return True
         
+    def gcode_check_flag(self):
+        curr_line = self.gcode_data[1]
+        next_mesage = self.gcode_data[0][curr_line]
+        if next_mesage.rfind(';LAYER:0') > -1:
+            self.gcode_status = 0
+        else:
+            return False
+        return True
+    
+    def gcode_feedback_demand(self,command):
+        command_core = command[:4]
+        if command_core[:3] == 'G0 ':
+            return True
+        if command_core[:3] == 'G1 ':
+            return True
+        if command_core == 'M140':
+            return True
+        return False
+    
     def gcode_custom_insert(self,command):
         commands = [['home','G28 X Y\n'],['stepper_d','M84\n'],
                     ['warm_n','M104 S235\n'],['warm_b','M140 S90\n'],
@@ -370,7 +394,7 @@ class serial_cnc_interface():
         self.bind_communication()
         self.gcode_data_handler('GetNewest','C:\\Casa Modelos\\Printing Files')
         self.setup_done = True
-        self.keep_looping = True
+        self.keep_looping = True 
         self.gcode_status = 1
         self.loop()
         return True
