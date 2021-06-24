@@ -9,61 +9,81 @@ import threading
 import time
 
 import etrogui
-import serialcncinterface
+import machineinterface
+import serialasynchandler
 
-GUI = etrogui.gui()
-CNC_INTERFACE = serialcncinterface.serial_cnc_interface()
-
-def control_event(State,LastState):
-    CliState=etrogui.ClientState[1]
-    if LastState[1][4]-State[1][4] == 1: #(LB) was Released
-        CliState -= 1
-        print('(LB) was Released')
-    if LastState[1][5]-State[1][5] == 1: #(RB) was Released
-        CliState += 1
-        print('(RB) was Released')
-    if CliState<1 : CliState=1
-    elif CliState>5 : CliState=5
-    return CliState 
+machine_interface = machineinterface.machine_interface()
+serialcom = serialasynchandler.serial_async_handler()
+gui = etrogui.gui()
 
 
 def THREAD_1_script():
     time.sleep(1)
-    GUI.run_webserver()
-    return True
+
+    setup_done_flag = False
+    while setup_done_flag == False:
+        try:
+            setup_done_flag = serialcom.setup_done
+        except:
+            None
+        time.sleep(0.5)
+        
+    machine_interface.serial_handler_set_instance(serialcom)
+    machine_interface.run()
+
 
 def THREAD_2_script():
     time.sleep(1)
-    return True 
 
-def THREAD_3_script():
-    time.sleep(0.1)
-    CNC_INTERFACE.run()
-    return True
+def THREAD_3_script():  
+    serialcom.run()
 
 def THREAD_4_script():
-    # time.sleep(2)
-    return True
+    time.sleep(1)   
+    
+    setup_done_flag = False
+    while setup_done_flag == False:
+        try:
+            setup_done_flag = machine_interface.setup_done
+        except:
+            None
+        time.sleep(0.5)
+        
+    gui.set_machine_interface(machine_interface)
+    gui.run_webserver()
 
 @etrogui.eel.expose
-def update_container_gcode_terminal():
-    return GUI.gcode_terminal_handler(CNC_INTERFACE)
-
+def update_terminal_gcode():
+    try:
+        data = gui.terminal_gcode_handler()
+    except:
+        data = ['Failed to get.']
+    return data
+@etrogui.eel.expose
+def call_terminal_gcode(call_mesage):
+    data = gui.terminal_gcode_caller(call_mesage)
+    return data
 @etrogui.eel.expose
 def update_monitor_serial():
-    return GUI.monitor_serial_handler(CNC_INTERFACE)
-
+    try:
+        data = gui.monitor_serial_handler()
+    except:
+        data = ['Failed to get.']
+    return data
 @etrogui.eel.expose
-def update_monitor_cnc():
-    return GUI.monitor_cnc_handler(CNC_INTERFACE)
+def update_monitor_machine():
+    try:
+        data = gui.monitor_machine_handler()
+    except:
+        data = ['Failed to get.']
+    return data
 
-
-THREAD_1 = threading.Thread(name='EtrOGUI server', target=THREAD_1_script)
-THREAD_2 = threading.Thread(name='EtrOGUI handler', target=THREAD_2_script)
-THREAD_3 = threading.Thread(name='CNC Machine Interface', target=THREAD_3_script)
-THREAD_4 = threading.Thread(name='robot controll interface', target=THREAD_4_script)
+THREAD_1 = threading.Thread(name='Machine Interface', target=THREAD_1_script)
+THREAD_2 = threading.Thread(name='GUI Handler', target=THREAD_2_script)
+THREAD_3 = threading.Thread(name='Serial Comunicator', target=THREAD_3_script)
+THREAD_4 = threading.Thread(name='web server', target=THREAD_4_script)
 
 THREAD_1.start()
-THREAD_2.start()
+# THREAD_2.start()
 THREAD_3.start()
-#THREAD_4.start()
+THREAD_4.start()
