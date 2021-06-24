@@ -22,6 +22,8 @@ class serial_async_handler():
         self.datatable = [[0,'label','message']]*self.datatable_len
         self.datatable_ipos = 0  # Position to insert new messages
         self.datatable_mcounter = 0  # message counter
+        self.feedback_word = 'ok'
+        self.feedback_queued = []
         self.monitor_data = []
         self.monitor_timestamp = 0
 
@@ -83,6 +85,7 @@ class serial_async_handler():
         if len(messages) > 0:  # messages found
             for msg in messages:
                 self.datatable_insert_data(msg,'[r ]:')
+                self.feedback_logger(msg)
         self.serial_buffed_data = message_piece  
         return True
 
@@ -125,9 +128,26 @@ class serial_async_handler():
             mcounter += 1
             if ipos >= self.datatable_len:  #preventing out of range index
                 ipos = 0
+            
         self.datatable_ipos = ipos
         self.datatable_mcounter = mcounter
         return True
+
+    def feedback_logger(self,message=False):  # split call and log function
+        if message is False:
+            if len(self.feedback_queued) > 0:
+                feedback_message = self.feedback_queued.pop(0)
+                return feedback_message
+            self.incomming_data_handler()
+            if len(self.feedback_queued) > 0:
+                feedback_message = self.feedback_queued.pop(0)
+                return feedback_message
+            elif len(self.feedback_queued) == 0:
+                return False
+            else:
+                return False
+        if message.rfind(self.feedback_word) > -1:
+            self.feedback_queued.append(message)
 
     def monitor_serial_update(self,return_data=True):
         '''fill monitor_data with formated data from datatable to show in 

@@ -55,25 +55,25 @@ def THREAD_4_script():
 @etrogui.eel.expose
 def update_terminal_gcode():
     try:
-        data = gui.terminal_gcode_handler()
+        data = gui.update_terminal_gcode()
     except:
         data = ['Failed to get.']
     return data
 @etrogui.eel.expose
 def call_terminal_gcode(call_mesage):
-    data = gui.terminal_gcode_caller(call_mesage)
+    data = gui.call_terminal_gcode(call_mesage)
     return data
 @etrogui.eel.expose
 def update_monitor_serial():
     try:
-        data = gui.monitor_serial_handler()
+        data = gui.update_monitor_serial()
     except:
         data = ['Failed to get.']
     return data
 @etrogui.eel.expose
 def update_monitor_machine():
     try:
-        data = gui.monitor_machine_handler()
+        data = gui.update_monitor_machine()
     except:
         data = ['Failed to get.']
     return data

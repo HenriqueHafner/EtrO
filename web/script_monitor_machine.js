@@ -4,7 +4,7 @@ class monitor_machine {
         this.ctx = this.canvas.getContext("2d"); //instancia do operador grafico 2d
     }
     updater(instance=this) {
-    setInterval( function() {instance.update(); }, 200);
+    setInterval( function() {obj_monitor_machine.update(); }, 500);
     }
     async update() {
         var ctx = this.ctx

@@ -16,7 +16,9 @@ class machine_interface():
         self.serial_handler = object
         self.machine_interface_mode = 0  # 0 is idle state
         self.setup_done = False
+        self.keeplooping = True
         self.command_write_queue = []
+        self.feedback_waiting_status = 0
         self.feedback_timestamp = 0
         self.monitor_timestamp = 0
         self.datatable = []
@@ -30,7 +32,8 @@ class machine_interface():
         self.gcode_list = ['Null']
 
         self.gcode_feedbackneeded_list = [
-            'G0','G1','G00','G01','M105','M109','M190','M400'
+            'G0','G1','G00','G01','M105','M109','M190','M400','G28',
+            'M104','M140'
             ]
         self.gcode_notfeedback_list = [
             ]
@@ -40,7 +43,8 @@ class machine_interface():
         self.serial_handler = serial_handler_l
 
     def monitor_machine_update(self,return_data=True):
-        if time.time() - self.monitor_timestamp > 2:
+        if time.time() - self.monitor_timestamp > 5 and \
+        self.machine_interface_mode == 1:
             self.monitor_timestamp = time.time()
             write_cue = self.command_write_queue
             if len(write_cue) == 0:
@@ -54,7 +58,7 @@ class machine_interface():
         
         temp_status = ['Failed to find a response in datatable']
         for message in datatable_l:
-            if message[1][1] == 'r' and message[2].rfind('T:') > 0:
+            if message[1][1] == 'r' and message[2].rfind('T:') > -1:
                 temp_status = message[2][3:]
                 break
         monitor_data_app_l.append(temp_status)
@@ -142,6 +146,7 @@ class machine_interface():
         return True
 
     def machine_writer_handler(self):
+        self.datatable_update(size=30,return_only=False)
         if self.feedback_waiting() is True:  #check if  should w8 for feedback
             return False
         command = None
@@ -152,61 +157,72 @@ class machine_interface():
             if command is False:  # unable to stream a command
                 self.machine_interface_mode = 1
                 print('No command to stream, machine_interface_mode set to 0')
-                return True
+                return False
             else:
                 self.command_write_queue.append(command)
         
         if len(self.command_write_queue) >= 1 and mstats >= 1:
-            writing_flag = self.write_command_serial(self.command_write_queue[0])
+            command = self.command_write_queue[0]
+            writing_flag = self.write_command_serial(command)
             if writing_flag is True:
                 self.command_write_queue.pop(0)
                 return True
             
         if len(self.command_write_queue) == 0:
-            return True
+            return False
         
-        print('machine_interface_mode:',self.machine_interface_mode
+        print('failed to write','machine_interface_mode:',self.machine_interface_mode
               ,'command_write_queue :',self.command_write_queue)
         return False
 
     def feedback_waiting(self):
-        data = self.datatable_update(size=1,return_only=True)
-        last_message = data[-1]
-        if last_message[1][1] == 'w':
-            fb_flag = self.check_feedback_needed(last_message[2])
-            if fb_flag == 0:
+        if self.feedback_waiting_status > 0:
+            fb_flag = self.serial_handler.feedback_logger()
+            if fb_flag is False:
+                waiting_time = time.time()-self.feedback_timestamp
+                if self.feedback_waiting_status == 1:
+                    if waiting_time < 120:
+                        return True
+                elif self.feedback_waiting_status == 2:
+                    if waiting_time < 120:
+                        return True
+                else:
+                    print('Feedback waiting failed.')
+                    self.feedback_waiting_status = 0
+                    return True
+            else:
+                self.feedback_waiting_status = 0
                 return False
-            elif fb_flag == 1:
-                return True
-            elif fb_flag == 2:
-                if time.time() - self.feedback_timestamp > 1:
-                    self.log_failedfeedback(last_message[2])
-                    print('No feedback for:',last_message[2])
-        return False  # True means keep wating for feedback.
-    
-    def check_feedback_needed(self,message:str):  # Especific to 3D printer
+        else:
+            return False
+                
+    def set_feedback_needs(self,message:str):  # Specific to 3D printer
         '''
+        Set:
+        self.gcode_feedbackneeded_list = 0
+            Recoganized command, no need of feedback.
+        self.gcode_feedbackneeded_list = 1
+            Recoganized command, needs feedback.
+       self.gcode_feedbackneeded_list = 2
+            Unrecoganized command, needs feedback.
         Parameters
         ----------
         message : str
-            past writed message to extract command and analize.
-        Returns
-        -------
-        0
-            Recoganized command, no need of feedback.
-        1
-            Recoganized command, needs feedback.
-        2
-            Unrecoganized command, needs feedback.
+            message to extract command and analize feedback needs.
         '''
         gcode = self.message_exctract_gcode(message)
         for i in self.gcode_notfeedback_list:
             if i == gcode:
-                return 0
+                self.feedback_waiting_status = 0
+                return None
         for i in self.gcode_feedbackneeded_list:
             if i == gcode:
-                return 1
-        return 2
+                self.feedback_waiting_status = 1
+                self.feedback_timestamp = time.time()
+                return None
+        self.feedback_waiting_status = 2
+        self.feedback_timestamp = time.time()
+        return None
 
     def log_failedfeedback(self,message:int):
         ''' log gcode message in instance propertie
@@ -239,7 +255,7 @@ class machine_interface():
         if isinstance(command_conditioned,bytes):
             write_flag = self.serial_handler.write_serial(command_conditioned)
             if write_flag is True:
-                self.feedback_timestamp = time.time()  # timestamp to check if feedback waiting time
+                self.set_feedback_needs(command)
                 return True  # sucessful writed
             else:
                 return False  # unsuccessful writed
@@ -314,9 +330,11 @@ class machine_interface():
         next_mesage = self.gcode_data[0][curr_line]
         if next_mesage == (';LAYER:1'):
             self.machine_interface_mode = 1
+        elif next_mesage[:4] == 'M105':
+            self.gcode_data[1] += 1
         else:
             return False
-        return True
+
 
     def command_custom_insert(self,function):
         for i in marlin_gcode_toolbox.function_table:
@@ -347,12 +365,19 @@ class machine_interface():
 
 # Operation methods
     def loop(self):
-        while True:
+        while self.keeplooping:
             if self.machine_interface_mode >= 1:
                 self.machine_writer_handler()
                 self.gcode_check_flag()
             time.sleep(0.05)
-        return True
+    
+    def iterate(self):
+        if self.keeplooping == True:
+            self.keeplooping = False
+            print('Keeplooping flag set to False.')
+        self.machine_writer_handler()
+        self.gcode_check_flag()
+        
 
     def run(self):
         self.gcode_data_handler('GetNewest','C:\\Casa Modelos\\Printing Files')

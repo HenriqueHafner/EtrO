@@ -8,7 +8,7 @@ class monitor_serial {
         this.ctx.rect(2, 3, 496, 18);
     }
     updater(instance=this) {
-    setInterval( function() {instance.update(); }, 200);
+    setInterval( function() {obj_monitor_serial.update(); }, 200);
     }
     async update() {
         var ctx = this.ctx
